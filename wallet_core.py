@@ -188,36 +188,25 @@ def extract(files,text,stop=None,log=lambda s:None):
  for m in _EVM.findall(blob):
   a=m.lower()
   if a not in aseen:aseen.add(a);addresses.append(m)
- for m in _BTC.findall(blob):
-  if m.lower() in aseen or m in aseen:continue
-  aseen.add(m);addresses.append(m)
  log(f'Extracted {len(phrases)} phrases and {len(addresses)} listed addresses')
  # #region agent log
  _dbg('G','wallet_core.py:extract','extract complete',{'phrases':len(phrases),'phrase_words':[len(x.split()) for x in phrases],'addresses':len(addresses),'evm40_strict':len(_EVM.findall(blob)),'evm40_loose':len(_EVM_LOOSE.findall(blob)),'evm64':len(re.findall(r'0x[0-9a-fA-F]{64}',blob)),'files':len(files or [])})
  # #endregion
  return phrases,addresses
 
-def derive(phrases,addresses,evm_count,btc_count,_extra=False,stop=None,log=lambda s:None):
- rows=[];evm_count=max(0,int(evm_count));btc_count=max(0,int(btc_count))
+def derive(phrases,addresses,evm_count,btc_count=0,_extra=False,stop=None,log=lambda s:None):
+ rows=[];evm_count=max(0,int(evm_count))
  for n,phrase in enumerate(phrases or [],1):
   check_stop(stop);log(f'Deriving seed {n}/{len(phrases)}');seed=seed_from(phrase);sid=f'seed_{n}'
   for i in range(evm_count):
    path=f"m/44'/60'/0'/0/{i}";priv=derive_path(seed,path)
    rows.append(dict(seed_id=sid,phrase=phrase,address=eth_addr(priv),kind='EVM',path=path))
-  btc_specs=[("m/44'/0'/0'/%d/%d",btc_p2pkh),("m/49'/0'/0'/%d/%d",btc_p2sh_p2wpkh),("m/84'/0'/0'/%d/%d",btc_p2wpkh)]
-  for tmpl,fn in btc_specs:
-   for change in (0,1):
-    for i in range(btc_count):
-     path=tmpl%(change,i);priv=derive_path(seed,path)
-     rows.append(dict(seed_id=sid,phrase=phrase,address=fn(priv),kind='BTC',path=path))
  for a in addresses or []:
   check_stop(stop)
-  kind='EVM' if a.lower().startswith('0x') and len(a)==42 else 'BTC'
-  if kind=='EVM':
-   hexaddr=a[2:].lower();chk=keccak256(hexaddr.encode()).hex()
-   addr='0x'+''.join(c.upper() if int(chk[i],16)>=8 else c for i,c in enumerate(hexaddr))
-  else:addr=a
-  rows.append(dict(seed_id='',phrase='',address=addr,kind=kind,path='listed'))
+  if not (a.lower().startswith('0x') and len(a)==42):continue
+  hexaddr=a[2:].lower();chk=keccak256(hexaddr.encode()).hex()
+  addr='0x'+''.join(c.upper() if int(chk[i],16)>=8 else c for i,c in enumerate(hexaddr))
+  rows.append(dict(seed_id='',phrase='',address=addr,kind='EVM',path='listed'))
  # #region agent log
  _dbg('A','wallet_core.py:derive','derive complete',{'rows':len(rows),'evm_count':evm_count,'btc_count':btc_count,'phrase_n':len(phrases or [])})
  # #endregion
