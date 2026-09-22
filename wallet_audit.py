@@ -26,14 +26,14 @@ from balance_engine import run,summarize,summarize_seeds,balances_found
 
 class App(tk.Tk):
  def __init__(self):
-  super().__init__();self.title('Wallet Audit �?" local phrase and address organizer');self.geometry('900x680');self.stop=threading.Event();self.events=queue.Queue();self.files=[];self.mapping=[];self.phrases=[];self.addresses=[]
+  super().__init__();self.title('Wallet Audit â€” local phrase and address organizer');self.geometry('900x680');self.stop=threading.Event();self.events=queue.Queue();self.files=[];self.mapping=[];self.phrases=[];self.addresses=[]
   box=ttk.Frame(self,padding=14);box.pack(fill='both',expand=True)
   ttk.Label(box,text='Wallet Audit',font=('',16,'bold')).pack(anchor='w');ttk.Label(box,text='Seed phrases stay on this computer. Only public addresses are sent during a balance check.').pack(anchor='w',pady=(0,8))
   top=ttk.Frame(box);top.pack(fill='x');ttk.Button(top,text='Add TXT / CSV / XLS / XLSX',command=self.add_files).pack(side='left');ttk.Button(top,text='Clear files',command=lambda:self.files.clear()).pack(side='left',padx=6)
   self.file_label=tk.StringVar(value='No files selected');ttk.Label(top,textvariable=self.file_label).pack(side='left',padx=10)
   ttk.Label(box,text='Or paste mixed text, addresses, and phrases:').pack(anchor='w',pady=(10,2));self.text=tk.Text(box,height=10,wrap='word');self.text.pack(fill='both',expand=True)
-  form=ttk.Frame(box);form.pack(fill='x',pady=8);self.evm_count=tk.StringVar(value='10');self.btc_count=tk.StringVar(value='1');self.private=tk.BooleanVar(value=True)
-  for label,var in [('MetaMask accounts per phrase',self.evm_count),('Bitcoin addresses per path',self.btc_count)]:ttk.Label(form,text=label+':').pack(side='left');ttk.Spinbox(form,from_=0,to=1000,textvariable=var,width=6).pack(side='left',padx=(3,12))
+  form=ttk.Frame(box);form.pack(fill='x',pady=8);self.evm_count=tk.StringVar(value='10');self.private=tk.BooleanVar(value=True)
+  ttk.Label(form,text='MetaMask accounts per phrase:').pack(side='left');ttk.Spinbox(form,from_=0,to=1000,textvariable=self.evm_count,width=6).pack(side='left',padx=(3,12))
   ttk.Checkbutton(form,text='Include phrases in private export',variable=self.private).pack(side='left')
   buttons=ttk.Frame(box);buttons.pack(fill='x');self.scan=ttk.Button(buttons,text='1. Extract and derive',command=self.start_extract);self.scan.pack(side='left');self.check=ttk.Button(buttons,text='2. Check balances',command=self.start_balance,state='disabled');self.check.pack(side='left',padx=7);self.export=ttk.Button(buttons,text='3. Export results',command=self.save,state='disabled');self.export.pack(side='left');ttk.Button(buttons,text='Stop',command=self.stop.set).pack(side='right')
   self.status=tk.StringVar(value='Choose files or paste input.');ttk.Label(box,textvariable=self.status).pack(anchor='w',pady=(8,2));self.log=tk.Text(box,height=10,state='disabled');self.log.pack(fill='both',expand=True);self.after(100,self.poll)
@@ -46,7 +46,7 @@ class App(tk.Tk):
  def start_extract(self):
   def task():
    try:
-    self.phrases,self.addresses=extract(self.files,self.text.get('1.0','end'),self.stop,self.note);self.mapping=derive(self.phrases,self.addresses,int(self.evm_count.get()),int(self.btc_count.get()),False,self.stop,self.note);self.events.put(('done_extract',f'Found {len(self.phrases)} valid phrases, {len(self.addresses)} listed addresses, and derived {len(self.mapping)} address records.'))
+    self.phrases,self.addresses=extract(self.files,self.text.get('1.0','end'),self.stop,self.note);self.mapping=derive(self.phrases,self.addresses,int(self.evm_count.get()),0,False,self.stop,self.note);self.events.put(('done_extract',f'Found {len(self.phrases)} valid phrases, {len(self.addresses)} listed addresses, and derived {len(self.mapping)} address records.'))
    except Exception as exc:self.events.put(('error',self.err(exc)))
   self.start(task)
  def start_balance(self):
@@ -71,17 +71,17 @@ class App(tk.Tk):
   try:
    export_extraction(folder,self.phrases,self.addresses,self.mapping,self.private.get())
    write_csv(Path(folder)/'balances.csv',self.balances,['address','chain','chain_id','asset','asset_type','contract','amount','usd','status','checked_utc','source'])
-   address_fields=['seed_id','address','kind','path','portfolio_usd','ETH','WETH','BNB','POL','BTC','coverage']
+   address_fields=['seed_id','address','kind','path','portfolio_usd','ETH','WETH','BNB','POL','coverage']
    write_csv(Path(folder)/'address_portfolio.csv',self.summary,address_fields)
-   seed_fields=['seed_id','metamask_address_0','evm_addresses_checked','bitcoin_addresses_checked','portfolio_usd','ETH','WETH','BNB','POL','BTC']
+   seed_fields=['seed_id','metamask_address_0','evm_addresses_checked','portfolio_usd','ETH','WETH','BNB','POL']
    if self.private.get():
     seed_fields.insert(1,'phrase');write_csv(Path(folder)/'seed_portfolio_PRIVATE.csv',self.seed_summary,seed_fields)
    else:write_csv(Path(folder)/'seed_portfolio.csv',self.seed_summary,seed_fields)
-   found_fields=['record_type','seed_id','metamask_address_0','wallet_address','portfolio_usd','ETH','WETH','BNB','POL','BTC']
+   found_fields=['record_type','seed_id','metamask_address_0','wallet_address','portfolio_usd','ETH','WETH','BNB','POL']
    found_name='balances_found_PRIVATE.csv' if self.private.get() else 'balances_found.csv'
    if self.private.get():found_fields.insert(2,'phrase')
    write_csv(Path(folder)/found_name,self.found_summary,found_fields)
-   Path(folder,'README.txt').write_text('Files are organized by purpose. balances_found_PRIVATE.csv contains only seed phrases or listed wallets where at least one checked asset is 0.001 or greater; each seed phrase appears once with totals across its derived addresses. seed_portfolio_PRIVATE.csv has one row per seed phrase with combined totals across all addresses derived for that seed. address_portfolio.csv has one row per address and never repeats phrases. address_mapping.csv connects seed IDs to addresses and paths without exposing phrases. Checked assets only: ETH, WETH, BNB, POL, BTC. Empty amount/status is an error, not zero. Coverage is not exhaustive all-chain or all-token coverage. PRIVATE files contain recovery phrases; store them offline.\n',encoding='utf-8')
+   Path(folder,'README.txt').write_text('Files are organized by purpose. balances_found_PRIVATE.csv contains only seed phrases or listed wallets where at least one checked asset is 0.001 or greater; each seed phrase appears once with totals across its derived addresses. seed_portfolio_PRIVATE.csv has one row per seed phrase with combined totals across all addresses derived for that seed. address_portfolio.csv has one row per address and never repeats phrases. address_mapping.csv connects seed IDs to addresses and paths without exposing phrases. Checked assets only: ETH, WETH, BNB, POL. Empty amount/status is an error, not zero. Coverage is not exhaustive all-chain or all-token coverage. PRIVATE files contain recovery phrases; store them offline.\n',encoding='utf-8')
    # #region agent log
    _dbg('F','wallet_audit.py:save','export complete',{'private':bool(self.private.get()),'files':sorted(p.name for p in Path(folder).iterdir() if p.is_file())})
    # #endregion
