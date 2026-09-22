@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor,as_completed
 from wallet_core import check_stop
 
 APP=Path(__file__).parent;CHAINS=json.loads((APP/'networks.json').read_text())
-REPORT_ASSETS=('ETH','WETH','BNB','POL','BTC')
+REPORT_ASSETS=('ETH','WETH','BNB','POL')
 BALANCE_FOUND_MINIMUM=Decimal('0.001')
 def http(url,body=None,headers=None):
  req=urllib.request.Request(url,data=None if body is None else json.dumps(body).encode(),headers={'User-Agent':'WalletAudit/1.0','Content-Type':'application/json',**(headers or {})})
@@ -48,29 +48,16 @@ def check_evm(addresses,stop=None,log=lambda s:None):
  with ThreadPoolExecutor(max_workers=5) as pool:
   for f in as_completed([pool.submit(scan,c) for c in CHAINS]):output.extend(f.result())
  return output,prices
-def check_btc(addresses,stop=None,log=lambda s:None):
- out=[]
- for n,address in enumerate(addresses,1):
-  check_stop(stop)
-  if n%25==0:log(f'Checking Bitcoin {n}/{len(addresses)}')
-  stamp=datetime.now(timezone.utc).isoformat();url='https://blockstream.info/api/address/'+address
-  try:
-   data=http(url);sats=sum(Decimal(x['funded_txo_sum']-x['spent_txo_sum']) for x in (data['chain_stats'],data['mempool_stats']))
-   out.append(dict(address=address,chain='Bitcoin',chain_id='bitcoin',asset='BTC',asset_type='native',contract='',amount=str(sats/Decimal(100000000)),usd='',status='ok',checked_utc=stamp,source=url))
-  except Exception as exc:out.append(dict(address=address,chain='Bitcoin',chain_id='bitcoin',asset='BTC',asset_type='native',contract='',amount='',usd='',status=str(exc),checked_utc=stamp,source=url))
- return out
 def run(address_rows,stop=None,log=lambda s:None):
- evm=sorted({r['address'].lower() for r in address_rows if r['kind']=='EVM'});btc=sorted({r['address'] for r in address_rows if r['kind']=='BTC'})
+ evm=sorted({r['address'].lower() for r in address_rows if r['kind']=='EVM'})
  # #region agent log
  try:
   from pathlib import Path as _P; import json as _j,time as _t
   with (_P(__file__).parent/'debug-f25f2a.log').open('a',encoding='utf-8') as _f:_f.write(_j.dumps({'sessionId':'f25f2a','hypothesisId':'I','location':'balance_engine.py:run','message':'run start','data':{'evm':len(evm),'btc':len(btc),'rows':len(address_rows or [])},'timestamp':int(_t.time()*1000),'runId':'post-fix'})+'\n')
  except Exception:pass
  # #endregion
- rows,prices=check_evm(evm,stop,log) if evm else ([],{}) ;btc_rows=check_btc(btc,stop,log) if btc else [];btc_usd=prices.get('bitcoin') or price(['bitcoin'],stop).get('bitcoin',Decimal(0))
- for r in btc_rows:
-  if r['status']=='ok':r['usd']=str(Decimal(r['amount'])*btc_usd)
- return rows+btc_rows
+ rows,_prices=check_evm(evm,stop,log) if evm else ([],{})
+ return rows
 def summarize(address_rows,balance_rows):
  result=[]
  for source in address_rows:
@@ -86,13 +73,13 @@ def summarize_seeds(address_rows,balance_rows):
   entries=[r for r in balance_rows if any(r['address'].lower()==m['address'].lower() for m in members) and r['status']=='ok']
   assets={k:sum((Decimal(r['amount']) for r in entries if r['asset']==k),Decimal(0)) for k in REPORT_ASSETS}
   primary=next((m['address'] for m in members if m['kind']=='EVM' and m['path'].endswith('/0')),'')
-  result.append(dict(seed_id=seed_id,phrase=members[0].get('phrase',''),metamask_address_0=primary,evm_addresses_checked=sum(m['kind']=='EVM' for m in members),bitcoin_addresses_checked=sum(m['kind']=='BTC' for m in members),portfolio_usd=str(sum((Decimal(r.get('usd') or 0) for r in entries),Decimal(0))),**{k:str(v) for k,v in assets.items()}))
+  result.append(dict(seed_id=seed_id,phrase=members[0].get('phrase',''),metamask_address_0=primary,evm_addresses_checked=sum(m['kind']=='EVM' for m in members),portfolio_usd=str(sum((Decimal(r.get('usd') or 0) for r in entries),Decimal(0))),**{k:str(v) for k,v in assets.items()}))
  return result
 
 def balances_found(seed_rows,address_rows,minimum=BALANCE_FOUND_MINIMUM):
  """Return one row per qualifying seed and one row per qualifying listed wallet.
 
- A record qualifies when any of the five checked assets is at least ``minimum``.
+ A record qualifies when any checked asset is at least ``minimum``.
  Derived addresses are represented by their combined seed row, so a phrase never
  appears more than once in this short report.
  """
