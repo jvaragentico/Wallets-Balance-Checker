@@ -1,0 +1,12 @@
+# Private wallet exports
+*_PRIVATE.csv
+*_PRIVATE.txt
+seed_phrases_PRIVATE.*
+balances_found_PRIVATE.*
+
+# Local output and runtime files
+outputs/
+*.log
+launch-error.txt
+__pycache__/
+*.py[cod]
